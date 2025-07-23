@@ -15,14 +15,20 @@ load_dotenv()
 # =============================================================================
 # API 配置（必需修改）
 # =============================================================================
-API_URL = os.getenv("API_URL", "http://172.16.0.120:4000/v1")
-API_KEY = os.getenv("API_KEY", "sk-m4uiQWH2dD-J7bzfT4ZiBg")
+API_URL = os.getenv("API_URL")
+API_KEY = os.getenv("API_KEY")
+
+# 验证必需的环境变量
+if not API_URL:
+    raise ValueError("API_URL 环境变量未设置。请创建 .env 文件并设置 API_URL")
+if not API_KEY:
+    raise ValueError("API_KEY 环境变量未设置。请创建 .env 文件并设置 API_KEY")
 
 # =============================================================================
 # 应用服务配置
 # =============================================================================
 HOST = os.getenv("HOST", "0.0.0.0")
-PORT = int(os.getenv("PORT", 8001))
+PORT = int(os.getenv("PORT", 8005))
 DEBUG = os.getenv("DEBUG", "true").lower() == "true"
 
 # =============================================================================

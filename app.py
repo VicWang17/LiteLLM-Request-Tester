@@ -14,7 +14,7 @@ from typing import List, Dict, Any, Optional
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -72,6 +72,17 @@ async def home(request: Request):
         "request": request,
         "models": AVAILABLE_MODELS
     })
+
+@app.get("/test-buttons", response_class=HTMLResponse)
+async def test_buttons():
+    """按钮测试页面"""
+    with open("test_buttons.html", "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
+
+@app.get("/debug-test")
+async def debug_test():
+    """调试测试页面"""
+    return FileResponse("debug_test.html")
 
 async def make_api_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
     """使用SimpleLiteLLMClient发送API请求"""

@@ -76,11 +76,20 @@ class LLMTester {
     }
 
     bindEvents() {
+        console.log('绑定事件...');
+        
         // 绑定表单提交事件
-        document.getElementById('testForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.startTest();
-        });
+        const testForm = document.getElementById('testForm');
+        if (testForm) {
+            console.log('找到测试表单，绑定提交事件');
+            testForm.addEventListener('submit', (e) => {
+                console.log('表单提交事件被触发');
+                e.preventDefault();
+                this.startTest();
+            });
+        } else {
+            console.error('未找到测试表单元素');
+        }
 
         // 绑定模式切换事件
         document.querySelectorAll('input[name="requestMode"]').forEach(radio => {
@@ -109,17 +118,26 @@ class LLMTester {
     }
 
     async startTest() {
-        if (this.isRunning) return;
+        console.log('startTest 方法被调用');
         
+        if (this.isRunning) {
+            console.log('测试已在运行中，跳过');
+            return;
+        }
+        
+        console.log('开始执行测试...');
         this.isRunning = true;
         const submitBtn = document.getElementById('submitBtn');
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> 测试中...';
         
         try {
+            console.log('获取表单数据...');
             const formData = this.getFormData();
+            console.log('表单数据:', formData);
             
             // 发送测试请求
+            console.log('发送API请求...');
             const response = await fetch('/test', {
                 method: 'POST',
                 headers: {
@@ -128,11 +146,14 @@ class LLMTester {
                 body: JSON.stringify(formData)
             });
             
+            console.log('API响应状态:', response.status);
+            
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             
             const result = await response.json();
+            console.log('API响应结果:', result);
             this.currentSessionId = result.session_id;
             
             // 开始轮询结果
@@ -464,5 +485,11 @@ let llmTester;
 
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', async () => {
-    llmTester = await LLMTester.create();
+    console.log('页面DOM加载完成，开始初始化...');
+    try {
+        llmTester = await LLMTester.create();
+        console.log('LLMTester初始化完成');
+    } catch (error) {
+        console.error('LLMTester初始化失败:', error);
+    }
 });

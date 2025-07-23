@@ -25,27 +25,33 @@ cd request-tester
 pip install -r requirements.txt
 ```
 
-### 2. 配置API
+### 2. 配置环境变量（重要！）
 
-编辑 `config.py` 文件，修改API配置：
+**为了安全起见，请使用环境变量配置敏感信息：**
 
-```python
-# API 配置（必需修改）
-API_URL = "http://your-api-server:4000/v1"
-API_KEY = "your-api-key"
+1. **复制环境变量模板**：
+   ```bash
+   cp .env.example .env
+   ```
 
-# 支持的模型列表（可添加或删除）
-AVAILABLE_MODELS = [
-    "your-model-1",
-    "your-model-2",
-    # ... 添加更多模型
-]
+2. **编辑 `.env` 文件**，填入您的实际配置：
+   ```bash
+   # 您的LiteLLM API服务地址
+   API_URL=http://your-litellm-server:4000/v1
+   
+   # 您的API密钥（请替换为您的实际密钥）
+   API_KEY=your-api-key-here
+   
+   # 可选配置
+   HOST=0.0.0.0
+   PORT=8005
+   DEBUG=true
+   DEFAULT_MODEL=qwen3-coder-plus
+   ```
 
-# 应用服务配置
-HOST = "0.0.0.0"
-PORT = 8001
-DEBUG = True
-```
+3. **验证配置**：
+   - `.env` 文件已被添加到 `.gitignore`，不会被提交到GitHub
+   - 其他用户可以参考 `.env.example` 文件创建自己的配置
 
 ### 3. 启动服务
 
@@ -61,7 +67,28 @@ python3 app.py
 
 ### 4. 访问界面
 
-打开浏览器访问：http://localhost:8001
+打开浏览器访问：http://localhost:8005
+
+## 🔒 安全配置说明
+
+### 环境变量配置
+
+本项目使用环境变量来管理敏感信息，确保API密钥等不会被意外提交到版本控制系统。
+
+**文件说明：**
+- `.env.example` - 环境变量模板文件（会被提交到GitHub）
+- `.env` - 您的实际配置文件（不会被提交到GitHub）
+- `.gitignore` - 确保敏感文件不被提交
+
+**首次使用步骤：**
+1. 复制 `.env.example` 为 `.env`
+2. 在 `.env` 中填入您的实际API配置
+3. 启动应用
+
+**团队协作：**
+- 新成员只需复制 `.env.example` 并填入自己的配置
+- 不会意外泄露他人的API密钥
+- 配置模板保持同步更新
 
 ## 📋 配置说明
 
