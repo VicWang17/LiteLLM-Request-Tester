@@ -81,9 +81,59 @@ server.log
 *.tmp
 *.temp
 
-# 测试文件（如果包含敏感信息）
+# 测试文件和调试文件
 test_*.py
 debug_*.html
+*_test.py
+*_debug.*
 
 # 本地配置文件
 config_local.py
+
+# 部署相关文件夹
+.vercel/
+.netlify/
+.railway/
+.heroku/
+
+# 数据文件
+*.dat
+*.csv
+*.json.bak
+*.db
+*.sqlite
+*.sqlite3
+
+# 备份文件
+*.bak
+*.backup
+*~
+*.orig
+
+# 编辑器临时文件
+.#*
+\#*#
+*.autosave
+
+# 压缩文件
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# 文档生成
+docs/_build/
+site/
+
+# 本地开发服务器文件
+.sass-cache/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 其他不必要的文件
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
