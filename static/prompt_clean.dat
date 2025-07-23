@@ -1,0 +1,326 @@
+{
+  "model": "qwen3-coder-plus",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "bash_execute",
+        "parameters": {
+          "type": "object",
+          "required": [
+            "command"
+          ],
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "The bash command to run."
+            }
+          }
+        },
+        "description": "Use this tool to execute shell commands in a persistent bash environment.\nPerfect for system operations, file manipulation, package installation, or running scripts.\nState persists across calls, ideal for multi-step operations requiring shell interaction."
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "file_edit",
+        "parameters": {
+          "type": "object",
+          "required": [
+            "command",
+            "path"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Path to file or directory."
+            },
+            "command": {
+              "enum": [
+                "view",
+                "create",
+                "str_replace",
+                "insert",
+                "undo_edit"
+              ],
+              "type": "string",
+              "description": "The commands to run. Allowed options are: `view`, `create`, `str_replace`, `insert`, `undo_edit`."
+            },
+            "new_str": {
+              "type": "string",
+              "description": "Required parameter of `str_replace` command containing the new string. Required parameter of `insert` command containing the string to insert."
+            },
+            "old_str": {
+              "type": "string",
+              "description": "Required parameter of `str_replace` command containing the string in `path` to replace."
+            },
+            "file_text": {
+              "type": "string",
+              "description": "Required parameter of `create` command, with the content of the file to be created."
+            },
+            "view_range": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "description": "Optional parameter of `view` command when `path` points to a file. If none is given, the full file is shown. If provided, the file will be shown in the indicated line number range, e.g. [11, 12] will show lines 11 and 12. Indexing at 1 to start. Setting `[start_line, -1]` shows all lines from `start_line` to the end of the file."
+            },
+            "insert_line": {
+              "type": "integer",
+              "description": "Required parameter of `insert` command. The `new_str` will be inserted AFTER the line `insert_line` of `path`."
+            }
+          }
+        },
+        "description": "Use this tool for viewing, creating, and editing files with precise string replacement capabilities.\nPerfect for making targeted code changes, viewing file contents, or creating new files.\nUse view for inspection, str_replace for precise edits, and create for new files."
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "code_rag_search",
+        "parameters": {
+          "type": "object",
+          "required": [
+            "query"
+          ],
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "The search query. Can be natural language describing what you're looking for, or specific code patterns."
+            },
+            "max_results": {
+              "type": "integer",
+              "default": 10,
+              "maximum": 50,
+              "minimum": 1,
+              "description": "Maximum number of results to return"
+            }
+          }
+        },
+        "description": "Use this tool for intelligent semantic code search using natural language queries.\nBest for finding code implementations, understanding functionality, or locating similar patterns.\nPreferred over text search as it understands code context and meaning, not just literal matches."
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "ripgrep",
+        "parameters": {
+          "type": "object",
+          "required": [
+            "pattern"
+          ],
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "description": "The regex pattern to search for (using Rust regex syntax)"
+            },
+            "file_type": {
+              "type": "string",
+              "description": "File type to filter by (e.g., 'py', 'js', 'ts')"
+            },
+            "max_results": {
+              "type": "integer",
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "description": "Maximum number of results to return"
+            },
+            "path_filter": {
+              "type": "string",
+              "description": "Glob pattern to filter file paths (e.g., '*.py', 'src/**')"
+            },
+            "context_lines": {
+              "type": "integer",
+              "default": 2,
+              "maximum": 10,
+              "minimum": 0,
+              "description": "Number of context lines to show around matches"
+            },
+            "case_sensitive": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether the search should be case sensitive"
+            },
+            "include_hidden": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether to include hidden files in search"
+            }
+          }
+        },
+        "description": "Use this tool for fast exact text pattern matching using regex across the codebase.\nBest when you know the specific text, function names, or patterns you're looking for.\nFallback option when semantic search isn't available or when you need literal string matching."
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "sequential_thinking",
+        "parameters": {
+          "type": "object",
+          "required": [
+            "thought",
+            "nextThoughtNeeded",
+            "thoughtNumber",
+            "totalThoughts"
+          ],
+          "properties": {
+            "thought": {
+              "type": "string",
+              "description": "Your current thinking step"
+            },
+            "branchId": {
+              "type": "string",
+              "description": "Branch identifier"
+            },
+            "isRevision": {
+              "type": "boolean",
+              "description": "Whether this revises previous thinking"
+            },
+            "thoughtNumber": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Current thought number"
+            },
+            "totalThoughts": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Estimated total thoughts needed"
+            },
+            "revisesThought": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Which thought is being reconsidered"
+            },
+            "branchFromThought": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Branching point thought number"
+            },
+            "needsMoreThoughts": {
+              "type": "boolean",
+              "description": "If more thoughts are needed"
+            },
+            "nextThoughtNeeded": {
+              "type": "boolean",
+              "description": "Whether another thought step is needed"
+            }
+          }
+        },
+        "description": "Use this tool for breaking down complex problems into sequential thinking steps.\nPerfect for tasks requiring step-by-step analysis, revision of previous thoughts, or branching logic.\nCall when you need structured problem-solving with the ability to reflect and adjust your approach."
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "complete_task",
+        "parameters": {
+          "type": "object",
+          "required": [
+            "answer"
+          ],
+          "properties": {
+            "answer": {
+              "type": "string",
+              "description": "The answer to the question, or final summary of actions taken to accomplish the task."
+            }
+          }
+        },
+        "description": "Use this tool to signal task completion and provide your final answer or summary.\nCall when you have fully addressed the user's request and want to conclude the conversation.\nEssential for clearly marking the end of task execution with deliverable results."
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "todo_manager",
+        "parameters": {
+          "type": "object",
+          "required": [
+            "operation"
+          ],
+          "properties": {
+            "tasks": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "任务列表（仅在operation为create时使用）"
+            },
+            "operation": {
+              "enum": [
+                "create",
+                "execute_next",
+                "status",
+                "complete"
+              ],
+              "type": "string",
+              "description": "要执行的操作：create-创建新的todo列表，execute_next-执行下一个任务，status-查看状态，complete-完成所有任务"
+            },
+            "description": {
+              "type": "string",
+              "description": "复杂任务的描述（仅在operation为create时使用）"
+            }
+          }
+        },
+        "description": "\n使用此工具处理复杂任务：将复杂任务分解为多个可管理的子任务，然后自动依次执行。\n\n适用场景：\n- 需要多个步骤才能完成的任务\n- 复杂的代码重构或功能开发\n- 需要协调多个文件或组件的任务\n\n工具会自动：\n1. 将复杂任务分解为子任务\n2. 依次执行每个子任务\n3. 提供阶段性进度汇报\n4. 完成后给出总结报告\n"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "memory_search",
+        "parameters": {
+          "type": "object",
+          "required": [
+            "query"
+          ],
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "default": 5,
+              "maximum": 10,
+              "minimum": 1,
+              "description": "Maximum number of results to return"
+            },
+            "query": {
+              "type": "string",
+              "description": "Search query string describing what content to find"
+            }
+          }
+        },
+        "description": "Use this tool to search previous conversation history for relevant information.\nCall when user references past discussions or you need historical context to answer questions.\nEssential for maintaining continuity and retrieving previously discussed topics or decisions."
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "memory_store",
+        "parameters": {
+          "type": "object",
+          "required": [
+            "content"
+          ],
+          "properties": {
+            "content": {
+              "type": "string",
+              "description": "Important information content to store"
+            },
+            "category": {
+              "type": "string",
+              "default": "general",
+              "description": "Content category (e.g., user_preference, task_completion, error_solution, etc.)"
+            },
+            "importance": {
+              "enum": [
+                "high",
+                "medium",
+                "low"
+              ],
+              "type": "string",
+              "default": "medium",
+              "description": "Importance level"
+            }
+          }
+        },
+        "description": "Use this tool to store important information for future reference in conversation memory.\nCall when user asks you to remember something or when you discover important preferences/patterns.\nEssential for recording task completions, error solutions, or user-specific configurations."
+      }
+    }

@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大模型请求测试工具</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/static/style.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- 左侧输入面板 -->
+            <div class="col-md-4 bg-light p-4">
+                <h2 class="mb-4">
+                    <i class="bi bi-robot"></i>
+                    大模型测试工具
+                </h2>
+                
+                <form id="testForm" class="mb-4">
+                    <!-- 模式选择 -->
+                    <div class="mb-3">
+                        <label class="form-label">请求模式</label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="requestMode" id="simpleMode" checked>
+                            <label class="btn btn-outline-primary" for="simpleMode">简单模式</label>
+                            
+                            <input type="radio" class="btn-check" name="requestMode" id="jsonMode">
+                            <label class="btn btn-outline-primary" for="jsonMode">JSON模式</label>
+                        </div>
+                    </div>
+
+                    <!-- 简单模式 -->
+                    <div id="simpleModePanel">
+                        <div class="mb-3">
+                            <label for="prompt" class="form-label">请求内容</label>
+                            <textarea class="form-control" id="prompt" rows="4" 
+                                    placeholder="输入您要发送给大模型的请求内容..." required>你好，请介绍一下你自己。</textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="model" class="form-label">模型名称</label>
+                            <input type="text" class="form-control" id="model" 
+                                   value="qwen3-coder-plus" placeholder="输入模型名称..." required>
+                            <div class="form-text">可以手动输入或修改模型名称</div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="temperature" class="form-label">Temperature</label>
+                                    <input type="number" class="form-control" id="temperature" 
+                                           value="0.7" min="0" max="2" step="0.1">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="maxTokens" class="form-label">最大Token数</label>
+                                    <input type="number" class="form-control" id="maxTokens" 
+                                           value="2000" min="100" max="8000" step="100">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- JSON模式 -->
+                    <div id="jsonModePanel" style="display: none;">
+                        <div class="mb-3">
+                            <label for="requestJson" class="form-label">完整请求JSON</label>
+                            <textarea class="form-control font-monospace" id="requestJson" rows="12" 
+                                    placeholder="输入完整的API请求JSON...">{
+  "model": "lm_studio/qwen3-coder-plus",
+  "messages": [
+    {
+      "role": "user",
+      "content": "你好，请介绍一下你自己。"
+    }
+  ],
+  "temperature": 0.7,
+  "max_tokens": 2000
+}</textarea>
+                        </div>
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <strong>提示：</strong>在JSON模式下，您可以包含完整的请求参数，如 tools、function_call、system 等。
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="count" class="form-label">调用次数</label>
+                        <input type="number" class="form-control" id="count" 
+                               value="3" min="1" max="20" required>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary w-100" id="submitBtn">
+                        <i class="bi bi-play-fill"></i>
+                        开始测试
+                    </button>
+                </form>
+                
+                <!-- 历史会话 -->
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="bi bi-clock-history"></i>
+                            历史会话
+                        </h6>
+                    </div>
+                    <div class="card-body" id="sessionsList">
+                        <p class="text-muted small">暂无历史会话</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 右侧结果面板 -->
+            <div class="col-md-8 p-4">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h3>
+                        <i class="bi bi-list-check"></i>
+                        测试结果
+                    </h3>
+                    <div>
+                        <button class="btn btn-sm btn-outline-secondary" id="refreshBtn">
+                            <i class="bi bi-arrow-clockwise"></i>
+                            刷新
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" id="clearBtn">
+                            <i class="bi bi-trash"></i>
+                            清空
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 进度条 -->
+                <div id="progressContainer" class="mb-3" style="display: none;">
+                    <div class="progress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" id="progressBar" style="width: 0%"></div>
+                    </div>
+                    <small class="text-muted" id="progressText">准备开始...</small>
+                </div>
+                
+                <!-- 统计信息 -->
+                <div id="statsContainer" class="row mb-4" style="display: none;">
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title text-primary" id="totalCount">0</h5>
+                                <p class="card-text small">总计</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title text-success" id="successCount">0</h5>
+                                <p class="card-text small">成功</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title text-danger" id="errorCount">0</h5>
+                                <p class="card-text small">失败</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title text-info" id="avgDuration">0s</h5>
+                                <p class="card-text small">平均用时</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 结果列表 -->
+                <div id="resultsContainer">
+                    <div class="text-center text-muted p-5">
+                        <i class="bi bi-inbox display-4"></i>
+                        <p class="mt-3">暂无测试结果</p>
+                        <p class="small">请在左侧填写请求内容并开始测试</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/app.js"></script>
+</body>
+</html>
