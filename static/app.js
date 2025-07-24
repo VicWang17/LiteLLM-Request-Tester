@@ -249,6 +249,8 @@ class LLMTester {
 
     updateStats(data) {
         const statsContainer = document.getElementById('statsContainer');
+        const toolStatsContainer = document.getElementById('toolStatsContainer');
+        const toolStatsText = document.getElementById('toolStatsText');
         
         if (data.results && data.results.length > 0) {
             statsContainer.style.display = 'block';
@@ -262,8 +264,27 @@ class LLMTester {
             document.getElementById('successCount').textContent = success;
             document.getElementById('errorCount').textContent = error;
             document.getElementById('avgDuration').textContent = `${avgDuration.toFixed(2)}s`;
+            
+            // 更新工具调用统计
+            if (data.tool_call_count !== undefined && data.tool_call_probability !== undefined) {
+                toolStatsContainer.style.display = 'block';
+                const toolCallCount = data.tool_call_count || 0;
+                const totalToolCalls = data.total_tool_calls || 0;
+                const probability = data.tool_call_probability || 0;
+                
+                let statsMessage = `总共 <strong>${total}</strong> 次测试中，有 <strong>${toolCallCount}</strong> 次调用了工具，调用工具概率为 <strong>${probability}%</strong>`;
+                
+                if (totalToolCalls > toolCallCount) {
+                    statsMessage += `（共调用 <strong>${totalToolCalls}</strong> 次工具）`;
+                }
+                
+                toolStatsText.innerHTML = statsMessage;
+            } else {
+                toolStatsContainer.style.display = 'none';
+            }
         } else {
             statsContainer.style.display = 'none';
+            toolStatsContainer.style.display = 'none';
         }
     }
 
@@ -287,24 +308,157 @@ class LLMTester {
             
             let contentHtml = '';
             if (result.success) {
-                // 显示响应内容
-                const response = result.response || '无响应内容';
+                // 优先使用新的数据结构
+                let contentText = result.content || '';
+                let toolCallsData = result.tool_calls || null;
                 
-                contentHtml = `
-                    <div class="mt-2">
-                        <strong>响应内容:</strong>
-                        <pre class="bg-light p-2 mt-1 small">${this.escapeHtml(response)}</pre>
-                    </div>
-                `;
+                // 如果新数据结构不存在，回退到解析响应摘要
+                if (!contentText && !toolCallsData) {
+                    const response = result.response || '无响应内容';
+                    
+                    if (response.includes(' | ')) {
+                        const parts = response.split(' | ');
+                        for (const part of parts) {
+                            if (part.startsWith('内容: ')) {
+                                contentText = part.substring(4);
+                            } else if (part.startsWith('调用工具: ')) {
+                                // 简单解析工具名称
+                                const toolNames = part.substring(5).split(', ');
+                                toolCallsData = toolNames.map(name => ({ name: name.trim() }));
+                            }
+                        }
+                    } else if (response.startsWith('内容: ')) {
+                        contentText = response.substring(4);
+                    } else if (response.startsWith('调用工具: ')) {
+                        const toolNames = response.substring(5).split(', ');
+                        toolCallsData = toolNames.map(name => ({ name: name.trim() }));
+                    } else {
+                        contentText = response;
+                    }
+                }
+                
+                // 显示响应内容
+                if (contentText && contentText.trim() && contentText !== '无响应内容') {
+                    contentHtml += `
+                        <div class="mt-2">
+                            <div class="d-flex align-items-center mb-2">
+                                <i class="bi bi-chat-text text-primary me-2"></i>
+                                <strong class="text-primary">响应内容 (Content):</strong>
+                            </div>
+                            <div class="border-start border-primary border-3 ps-3">
+                                <div class="bg-white p-3 rounded border">
+                                    <pre class="mb-0 small text-dark">${this.escapeHtml(contentText.trim())}</pre>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // 显示工具调用信息
+                if (toolCallsData && Array.isArray(toolCallsData) && toolCallsData.length > 0) {
+                    contentHtml += `
+                        <div class="mt-3">
+                            <div class="d-flex align-items-center mb-2">
+                                <i class="bi bi-tools text-warning me-2"></i>
+                                <strong class="text-warning">工具调用 (Tool Calls):</strong>
+                            </div>
+                            <div class="border-start border-warning border-3 ps-3">
+                                <div class="bg-warning bg-opacity-10 p-3 rounded">
+                    `;
+                    
+                    toolCallsData.forEach((tool, index) => {
+                        contentHtml += `
+                            <div class="mb-2 ${index > 0 ? 'mt-2 pt-2 border-top' : ''}">
+                                <div class="d-flex align-items-center mb-1">
+                                    <span class="badge bg-warning text-dark me-2">
+                                        <i class="bi bi-gear-fill me-1"></i>
+                                        ${this.escapeHtml(tool.name || '未知工具')}
+                                    </span>
+                                    ${tool.id ? `<small class="text-muted">ID: ${this.escapeHtml(tool.id)}</small>` : ''}
+                                </div>
+                        `;
+                        
+                        if (tool.arguments) {
+                            let argsDisplay = '';
+                            if (typeof tool.arguments === 'object') {
+                                argsDisplay = JSON.stringify(tool.arguments, null, 2);
+                            } else {
+                                argsDisplay = tool.arguments;
+                            }
+                            contentHtml += `
+                                <div class="mt-1">
+                                    <small class="text-muted">参数:</small>
+                                    <pre class="bg-light p-2 mt-1 small rounded border">${this.escapeHtml(argsDisplay)}</pre>
+                                </div>
+                            `;
+                        }
+                        
+                        contentHtml += `</div>`;
+                    });
+                    
+                    contentHtml += `
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else if (typeof toolCallsData === 'string') {
+                    // 处理字符串形式的工具调用信息（向后兼容）
+                    contentHtml += `
+                        <div class="mt-3">
+                            <div class="d-flex align-items-center mb-2">
+                                <i class="bi bi-tools text-warning me-2"></i>
+                                <strong class="text-warning">工具调用 (Tool Calls):</strong>
+                            </div>
+                            <div class="border-start border-warning border-3 ps-3">
+                                <div class="bg-warning bg-opacity-10 p-2 rounded">
+                                    <span class="badge bg-warning text-dark me-1">
+                                        <i class="bi bi-gear-fill me-1"></i>
+                                        ${this.escapeHtml(toolCallsData)}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // 如果既没有content也没有tool_calls，显示原始响应
+                if ((!contentText || !contentText.trim()) && !toolCallsData) {
+                    const response = result.response || '无响应内容';
+                    contentHtml += `
+                        <div class="mt-2">
+                            <div class="d-flex align-items-center mb-2">
+                                <i class="bi bi-info-circle text-muted me-2"></i>
+                                <strong class="text-muted">响应信息:</strong>
+                            </div>
+                            <div class="border-start border-secondary border-3 ps-3">
+                                <pre class="bg-light p-2 mt-1 small rounded">${this.escapeHtml(response)}</pre>
+                            </div>
+                        </div>
+                    `;
+                }
                 
                 // 显示token使用情况
                 if (result.input_tokens || result.output_tokens || result.total_tokens) {
                     contentHtml += `
-                        <div class="mt-2">
-                            <strong>Token使用:</strong>
-                            <span class="badge bg-info">输入: ${result.input_tokens || 0}</span>
-                            <span class="badge bg-info">输出: ${result.output_tokens || 0}</span>
-                            <span class="badge bg-info">总计: ${result.total_tokens || 0}</span>
+                        <div class="mt-3">
+                            <div class="d-flex align-items-center mb-2">
+                                <i class="bi bi-speedometer2 text-info me-2"></i>
+                                <strong class="text-info">Token使用统计:</strong>
+                            </div>
+                            <div class="d-flex gap-2 flex-wrap">
+                                <span class="badge bg-info">
+                                    <i class="bi bi-arrow-down me-1"></i>
+                                    输入: ${result.input_tokens || 0}
+                                </span>
+                                <span class="badge bg-info">
+                                    <i class="bi bi-arrow-up me-1"></i>
+                                    输出: ${result.output_tokens || 0}
+                                </span>
+                                <span class="badge bg-info">
+                                    <i class="bi bi-calculator me-1"></i>
+                                    总计: ${result.total_tokens || 0}
+                                </span>
+                            </div>
                         </div>
                     `;
                 }
@@ -312,8 +466,13 @@ class LLMTester {
                 // 显示错误信息
                 contentHtml = `
                     <div class="mt-2">
-                        <strong>错误信息:</strong>
-                        <pre class="bg-danger text-white p-2 mt-1 small">${this.escapeHtml(result.error || '未知错误')}</pre>
+                        <div class="d-flex align-items-center mb-2">
+                            <i class="bi bi-exclamation-triangle text-danger me-2"></i>
+                            <strong class="text-danger">错误信息:</strong>
+                        </div>
+                        <div class="border-start border-danger border-3 ps-3">
+                            <pre class="bg-danger bg-opacity-10 text-danger p-3 mt-1 small rounded">${this.escapeHtml(result.error || '未知错误')}</pre>
+                        </div>
                     </div>
                 `;
             }
@@ -423,6 +582,7 @@ class LLMTester {
                         </div>
                     `;
                     document.getElementById('statsContainer').style.display = 'none';
+                    document.getElementById('toolStatsContainer').style.display = 'none';
                 }
             } else {
                 throw new Error('删除失败');
@@ -456,6 +616,7 @@ class LLMTester {
                 </div>
             `;
             document.getElementById('statsContainer').style.display = 'none';
+            document.getElementById('toolStatsContainer').style.display = 'none';
             
         } catch (error) {
             console.error('清空会话失败:', error);

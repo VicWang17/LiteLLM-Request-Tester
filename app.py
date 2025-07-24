@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from uuid import uuid4
 
+import litellm
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -25,9 +26,6 @@ from config import (
     HOST, PORT, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS,
     MAX_REQUEST_COUNT, REQUEST_TIMEOUT, DEFAULT_MODEL
 )
-
-# 导入简化的LiteLLM客户端
-from simple_llm_client import SimpleLiteLLMClient, TextPrompt
 
 app = FastAPI(
     title="大模型请求测试工具", 
@@ -85,48 +83,233 @@ async def debug_test():
     return FileResponse("debug_test.html")
 
 async def make_api_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
-    """使用SimpleLiteLLMClient发送API请求"""
+    """直接使用LiteLLM发送完整的API请求"""
     try:
-        # 创建SimpleLiteLLMClient实例
-        client = SimpleLiteLLMClient(
-            api_key=API_KEY,
-            base_url=API_URL,
-            model_name=request_data.get("model")
-        )
+        print(f"发送完整请求到LiteLLM: {json.dumps(request_data, indent=2, ensure_ascii=False)}")
         
-        # 准备消息
-        messages = []
-        for msg in request_data.get("messages", []):
-            if msg.get("role") == "user":
-                messages.append([TextPrompt(text=msg.get("content", ""))])
+        # 为模型名称添加openai/前缀（如果需要）
+        model = request_data.get("model", DEFAULT_MODEL)
+        if not model.startswith("openai/"):
+            model = f"openai/{model}"
         
-        # 调用generate方法
-        response, metadata = client.generate(
-            messages=messages,
-            max_tokens=request_data.get("max_tokens", DEFAULT_MAX_TOKENS),
-            temperature=request_data.get("temperature", DEFAULT_TEMPERATURE)
-        )
-        
-        # 将响应转换为标准格式
-        content = ""
-        if response and len(response) > 0:
-            content = response[0].text if hasattr(response[0], 'text') else str(response[0])
-        
-        return {
-            "choices": [{
-                "message": {
-                    "content": content,
-                    "role": "assistant"
-                }
-            }],
-            "usage": {
-                "prompt_tokens": metadata.get('input_tokens', 0),
-                "completion_tokens": metadata.get('output_tokens', 0),
-                "total_tokens": metadata.get('input_tokens', 0) + metadata.get('output_tokens', 0)
-            }
+        # 准备LiteLLM请求参数
+        litellm_params = {
+            "api_key": API_KEY,
+            "base_url": API_URL,
+            "model": model,
+            **request_data  # 传递所有原始请求数据
         }
+        
+        # 强制禁用流式传输以获得完整响应
+        litellm_params["stream"] = False
+        
+        # 移除可能冲突的参数
+        litellm_params.pop("model", None)  # 避免重复
+        
+        # 重新设置model参数
+        litellm_params["model"] = model
+        
+        print(f"LiteLLM请求参数: {json.dumps({k: v for k, v in litellm_params.items() if k != 'api_key'}, indent=2, ensure_ascii=False)}")
+        
+        # 使用LiteLLM直接发送请求
+        import litellm
+        response = await litellm.acompletion(**litellm_params)
+        
+        print(f"LiteLLM响应类型: {type(response)}")
+        print(f"LiteLLM响应对象属性: {[attr for attr in dir(response) if not attr.startswith('_')]}")
+        
+        # 检查是否是CustomStreamWrapper对象
+        if hasattr(response, '__class__') and 'CustomStreamWrapper' in str(response.__class__):
+            print("检测到CustomStreamWrapper对象，使用原始响应")
+            print(f"使用原始响应: {response}")
+            
+            # 对于CustomStreamWrapper，我们需要特殊处理
+            response_dict = {
+                'model': getattr(response, 'model', 'unknown'),
+                'choices': [],
+                'usage': {}
+            }
+            
+            # 尝试提取其他字段
+            if hasattr(response, 'id'):
+                response_dict['id'] = response.id
+            if hasattr(response, 'object'):
+                response_dict['object'] = response.object
+            if hasattr(response, 'created'):
+                response_dict['created'] = response.created
+            if hasattr(response, 'system_fingerprint'):
+                response_dict['system_fingerprint'] = response.system_fingerprint
+                
+            # 对于流式响应，尝试从complete_response或response_uptil_now获取数据
+            complete_response = None
+            print(f"检查complete_response: {hasattr(response, 'complete_response')}")
+            if hasattr(response, 'complete_response'):
+                print(f"complete_response值: {response.complete_response}")
+                if response.complete_response:
+                    complete_response = response.complete_response
+                    print(f"找到complete_response: {type(complete_response)}")
+            
+            print(f"检查response_uptil_now: {hasattr(response, 'response_uptil_now')}")
+            if hasattr(response, 'response_uptil_now'):
+                print(f"response_uptil_now值: {response.response_uptil_now}")
+                if not complete_response and response.response_uptil_now:
+                    complete_response = response.response_uptil_now
+                    print(f"找到response_uptil_now: {type(complete_response)}")
+            
+            # 检查其他可能的属性
+            print(f"检查chunks: {hasattr(response, 'chunks')}")
+            if hasattr(response, 'chunks'):
+                print(f"chunks值: {response.chunks}")
+            
+            print(f"检查choices直接访问: {hasattr(response, 'choices')}")
+            if hasattr(response, 'choices'):
+                print(f"choices值: {response.choices}")
+            
+            print(f"检查usage直接访问: {hasattr(response, 'usage')}")
+            if hasattr(response, 'usage'):
+                print(f"usage值: {response.usage}")
+            
+            if complete_response:
+                # 从完整响应中提取数据
+                if hasattr(complete_response, 'choices') and complete_response.choices:
+                    response_dict['choices'] = []
+                    for choice in complete_response.choices:
+                        choice_dict = {}
+                        if hasattr(choice, 'index'):
+                            choice_dict['index'] = choice.index
+                        if hasattr(choice, 'finish_reason'):
+                            choice_dict['finish_reason'] = choice.finish_reason
+                            
+                        # 提取message
+                        if hasattr(choice, 'message'):
+                            message_dict = {}
+                            if hasattr(choice.message, 'role'):
+                                message_dict['role'] = choice.message.role
+                            if hasattr(choice.message, 'content'):
+                                message_dict['content'] = choice.message.content
+                            if hasattr(choice.message, 'tool_calls'):
+                                message_dict['tool_calls'] = choice.message.tool_calls
+                            if hasattr(choice.message, 'function_call'):
+                                message_dict['function_call'] = choice.message.function_call
+                            choice_dict['message'] = message_dict
+                            
+                        response_dict['choices'].append(choice_dict)
+                
+                # 提取usage
+                if hasattr(complete_response, 'usage') and complete_response.usage:
+                    usage_dict = {}
+                    if hasattr(complete_response.usage, 'prompt_tokens'):
+                        usage_dict['prompt_tokens'] = complete_response.usage.prompt_tokens
+                    if hasattr(complete_response.usage, 'completion_tokens'):
+                        usage_dict['completion_tokens'] = complete_response.usage.completion_tokens
+                    if hasattr(complete_response.usage, 'total_tokens'):
+                        usage_dict['total_tokens'] = complete_response.usage.total_tokens
+                    if hasattr(complete_response.usage, 'prompt_tokens_details'):
+                        usage_dict['prompt_tokens_details'] = complete_response.usage.prompt_tokens_details
+                    if hasattr(complete_response.usage, 'completion_tokens_details'):
+                        usage_dict['completion_tokens_details'] = complete_response.usage.completion_tokens_details
+                    response_dict['usage'] = usage_dict
+            else:
+                # 如果没有complete_response，尝试直接从response对象提取
+                if hasattr(response, 'choices') and response.choices:
+                    response_dict['choices'] = []
+                    for choice in response.choices:
+                        choice_dict = {}
+                        if hasattr(choice, 'index'):
+                            choice_dict['index'] = choice.index
+                        if hasattr(choice, 'finish_reason'):
+                            choice_dict['finish_reason'] = choice.finish_reason
+                            
+                        # 提取message
+                        if hasattr(choice, 'message'):
+                            message_dict = {}
+                            if hasattr(choice.message, 'role'):
+                                message_dict['role'] = choice.message.role
+                            if hasattr(choice.message, 'content'):
+                                message_dict['content'] = choice.message.content
+                            if hasattr(choice.message, 'tool_calls'):
+                                message_dict['tool_calls'] = choice.message.tool_calls
+                            if hasattr(choice.message, 'function_call'):
+                                message_dict['function_call'] = choice.message.function_call
+                            choice_dict['message'] = message_dict
+                            
+                        response_dict['choices'].append(choice_dict)
+                
+                # 提取usage
+                if hasattr(response, 'usage') and response.usage:
+                    usage_dict = {}
+                    if hasattr(response.usage, 'prompt_tokens'):
+                        usage_dict['prompt_tokens'] = response.usage.prompt_tokens
+                    if hasattr(response.usage, 'completion_tokens'):
+                        usage_dict['completion_tokens'] = response.usage.completion_tokens
+                    if hasattr(response.usage, 'total_tokens'):
+                        usage_dict['total_tokens'] = response.usage.total_tokens
+                    if hasattr(response.usage, 'prompt_tokens_details'):
+                        usage_dict['prompt_tokens_details'] = response.usage.prompt_tokens_details
+                    if hasattr(response.usage, 'completion_tokens_details'):
+                        usage_dict['completion_tokens_details'] = response.usage.completion_tokens_details
+                    response_dict['usage'] = usage_dict
+        else:
+            # 安全地提取响应数据，避免序列化问题
+            response_dict = {}
+            
+            # 提取基本字段
+            if hasattr(response, 'id'):
+                response_dict['id'] = response.id
+            if hasattr(response, 'object'):
+                response_dict['object'] = response.object
+            if hasattr(response, 'created'):
+                response_dict['created'] = response.created
+            if hasattr(response, 'model'):
+                response_dict['model'] = response.model
+            if hasattr(response, 'system_fingerprint'):
+                response_dict['system_fingerprint'] = response.system_fingerprint
+                
+            # 提取choices
+            if hasattr(response, 'choices') and response.choices:
+                response_dict['choices'] = []
+                for choice in response.choices:
+                    choice_dict = {}
+                    if hasattr(choice, 'index'):
+                        choice_dict['index'] = choice.index
+                    if hasattr(choice, 'finish_reason'):
+                        choice_dict['finish_reason'] = choice.finish_reason
+                        
+                    # 提取message
+                    if hasattr(choice, 'message'):
+                        message_dict = {}
+                        if hasattr(choice.message, 'role'):
+                            message_dict['role'] = choice.message.role
+                        if hasattr(choice.message, 'content'):
+                            message_dict['content'] = choice.message.content
+                        if hasattr(choice.message, 'tool_calls'):
+                            message_dict['tool_calls'] = choice.message.tool_calls
+                        if hasattr(choice.message, 'function_call'):
+                            message_dict['function_call'] = choice.message.function_call
+                        choice_dict['message'] = message_dict
+                        
+                    response_dict['choices'].append(choice_dict)
+            
+            # 提取usage
+            if hasattr(response, 'usage') and response.usage:
+                usage_dict = {}
+                if hasattr(response.usage, 'prompt_tokens'):
+                    usage_dict['prompt_tokens'] = response.usage.prompt_tokens
+                if hasattr(response.usage, 'completion_tokens'):
+                    usage_dict['completion_tokens'] = response.usage.completion_tokens
+                if hasattr(response.usage, 'total_tokens'):
+                    usage_dict['total_tokens'] = response.usage.total_tokens
+                if hasattr(response.usage, 'prompt_tokens_details'):
+                    usage_dict['prompt_tokens_details'] = response.usage.prompt_tokens_details
+                if hasattr(response.usage, 'completion_tokens_details'):
+                    usage_dict['completion_tokens_details'] = response.usage.completion_tokens_details
+                response_dict['usage'] = usage_dict
+        
+        print(f"最终提取的响应字典: {json.dumps(response_dict, indent=2, ensure_ascii=False, default=str)}")
+        
+        return response_dict
     except Exception as e:
-        print(f"SimpleLiteLLMClient API调用失败: {e}")
+        print(f"LiteLLM API调用失败: {e}")
         import traceback
         traceback.print_exc()
         raise e
@@ -174,23 +357,44 @@ async def run_test(test_req: TestRequest):
                 
                 # 提取响应内容
                 content = None
-                tool_calls_summary = None
+                tool_calls_info = None
+                full_content = None
                 
                 if response.get('choices') and len(response['choices']) > 0:
                     choice = response['choices'][0]
                     if choice.get('message'):
-                        content = choice['message'].get('content', '')
+                        full_content = choice['message'].get('content', '')
+                        content = full_content
                         
                         # 提取tool_calls信息
                         if choice['message'].get('tool_calls'):
-                            tool_names = []
+                            tool_calls_list = []
                             for tc in choice['message']['tool_calls']:
+                                tool_info = {}
                                 if tc.get('function', {}).get('name'):
-                                    tool_names.append(tc['function']['name'])
-                            if tool_names:
-                                tool_calls_summary = f"调用工具: {', '.join(tool_names)}"
+                                    tool_info['name'] = tc['function']['name']
+                                if tc.get('function', {}).get('arguments'):
+                                    try:
+                                        import json
+                                        args = json.loads(tc['function']['arguments'])
+                                        tool_info['arguments'] = args
+                                    except:
+                                        tool_info['arguments'] = tc['function']['arguments']
+                                if tc.get('id'):
+                                    tool_info['id'] = tc['id']
+                                tool_calls_list.append(tool_info)
+                            
+                            if tool_calls_list:
+                                tool_calls_info = tool_calls_list
                 
-                # 组合摘要信息
+                # 构建响应摘要
+                response_data = {
+                    'content': content,
+                    'tool_calls': tool_calls_info,
+                    'full_content': full_content
+                }
+                
+                # 为了向后兼容，仍然生成response字段
                 response_summary_parts = []
                 if content and content.strip():
                     # 限制content长度避免显示过长
@@ -199,8 +403,9 @@ async def run_test(test_req: TestRequest):
                         content_preview = content_preview[:200] + "..."
                     response_summary_parts.append(f"内容: {content_preview}")
                 
-                if tool_calls_summary:
-                    response_summary_parts.append(tool_calls_summary)
+                if tool_calls_info:
+                    tool_names = [tc.get('name', '未知工具') for tc in tool_calls_info]
+                    response_summary_parts.append(f"调用工具: {', '.join(tool_names)}")
                 
                 if not response_summary_parts:
                     response_summary = "无响应内容"
@@ -219,6 +424,9 @@ async def run_test(test_req: TestRequest):
                     "duration": round(duration, 2),
                     "success": True,
                     "response": response_summary,
+                    "content": response_data.get('content'),
+                    "tool_calls": response_data.get('tool_calls'),
+                    "full_content": response_data.get('full_content'),
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
                     "total_tokens": total_tokens,
@@ -283,12 +491,34 @@ async def get_results(session_id: str):
     if session_id not in test_results:
         raise HTTPException(status_code=404, detail="会话不存在")
     
+    results = test_results[session_id]
+    total_count = len(results)
+    success_count = len([r for r in results if r["success"]])
+    error_count = len([r for r in results if not r["success"]])
+    
+    # 计算工具调用统计
+    tool_call_count = 0
+    total_tool_calls = 0
+    
+    for result in results:
+        if result["success"] and result.get("tool_calls"):
+            tool_call_count += 1
+            if isinstance(result["tool_calls"], list):
+                total_tool_calls += len(result["tool_calls"])
+            else:
+                total_tool_calls += 1
+    
+    tool_call_probability = (tool_call_count / total_count * 100) if total_count > 0 else 0
+    
     return {
         "session_id": session_id,
-        "results": test_results[session_id],
-        "total_count": len(test_results[session_id]),
-        "success_count": len([r for r in test_results[session_id] if r["success"]]),
-        "error_count": len([r for r in test_results[session_id] if not r["success"]])
+        "results": results,
+        "total_count": total_count,
+        "success_count": success_count,
+        "error_count": error_count,
+        "tool_call_count": tool_call_count,
+        "total_tool_calls": total_tool_calls,
+        "tool_call_probability": round(tool_call_probability, 1)
     }
 
 @app.get("/sessions")
